@@ -20,13 +20,13 @@ contract('Splitter', function(accounts) {
         tx = await spl.addUser(web3.fromAscii('carol'), carol, {from: accounts[0]});
         assert.equal(tx.receipt.status, 1, "Transaction (carol) failed.");
 
-        var bobAddr = await spl.balances('bob', {from: accounts[0]});
+        var bobAddr = await spl.users('bob', {from: accounts[0]});
         assert.equal(bobAddr, bob, "Bob's address incorrect.");
 
-        var aliceAddr = await spl.balances('alice', {from: accounts[0]});
+        var aliceAddr = await spl.users('alice', {from: accounts[0]});
         assert.equal(aliceAddr, alice, "Alice's address incorrect.");
 
-        var carolAddr = await spl.balances('carol', {from: accounts[0]});
+        var carolAddr = await spl.users('carol', {from: accounts[0]});
         assert.equal(carolAddr, carol, "Carol's address incorrect.");
     });
 
@@ -46,7 +46,7 @@ contract('Splitter', function(accounts) {
         var aliceBal = await web3.eth.getBalance(alice);
         var carolBal = await web3.eth.getBalance(carol);
 
-        tx = await spl.split(bob, carol, {from: alice, value: 21});
+        tx = await spl.splitByAddress(bob, carol, {from: alice, value: 20});
         assert.equal(tx.receipt.status, 1, "Split transaction failed.");
 
         var newBobBal = await web3.eth.getBalance(bob);
