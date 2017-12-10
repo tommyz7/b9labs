@@ -8,52 +8,46 @@ contract('Splitter', function(accounts) {
         spl = await Splitter.new({from: accounts[0]});
     });
 
-    it('should add 3 addresses to mapping', async () => {
-        var bob = accounts[0];
-        var alice = accounts[1];
-        var carol = accounts[2];
-
-        var tx = await spl.addUser(web3.fromAscii('bob'), bob, {from: accounts[0]});
-        assert.equal(tx.receipt.status, 1, "Transaction (bob) failed.");
-        tx = await spl.addUser(web3.fromAscii('alice'), alice, {from: accounts[0]});
-        assert.equal(tx.receipt.status, 1, "Transaction (alice) failed.");
-        tx = await spl.addUser(web3.fromAscii('carol'), carol, {from: accounts[0]});
-        assert.equal(tx.receipt.status, 1, "Transaction (carol) failed.");
-
-        var bobAddr = await spl.users('bob', {from: accounts[0]});
-        assert.equal(bobAddr, bob, "Bob's address incorrect.");
-
-        var aliceAddr = await spl.users('alice', {from: accounts[0]});
-        assert.equal(aliceAddr, alice, "Alice's address incorrect.");
-
-        var carolAddr = await spl.users('carol', {from: accounts[0]});
-        assert.equal(carolAddr, carol, "Carol's address incorrect.");
-    });
 
     it('should split ether between peers', async () => {
         var bob = accounts[2];
         var alice = accounts[3];
         var carol = accounts[4];
 
-        var tx = await spl.addUser(web3.fromAscii('bob'), bob, {from: bob});
-        assert.equal(tx.receipt.status, 1, "Transaction (bob) failed.");
-        tx = await spl.addUser(web3.fromAscii('alice'), alice, {from: bob});
-        assert.equal(tx.receipt.status, 1, "Transaction (alice) failed.");
-        tx = await spl.addUser(web3.fromAscii('carol'), carol, {from: bob});
-        assert.equal(tx.receipt.status, 1, "Transaction (carol) failed.");
-
-        var bobBal = await web3.eth.getBalance(bob);
-        var aliceBal = await web3.eth.getBalance(alice);
-        var carolBal = await web3.eth.getBalance(carol);
-
-        tx = await spl.splitByAddress(bob, carol, {from: alice, value: 20});
+        tx = await spl.splitFunds(bob, carol, {from: alice, value: 21});
         assert.equal(tx.receipt.status, 1, "Split transaction failed.");
 
-        var newBobBal = await web3.eth.getBalance(bob);
-        var newCarolBal = await web3.eth.getBalance(carol);
+        var bobWBal = await spl.balances.call(bob);
+        var carolWBal = await spl.balances.call(carol);
+        var aliceWBal = await spl.balances.call(alice);
 
-        assert.equal(newBobBal.toNumber(), bobBal.minus(10), "Split not equal.");
-        assert.equal(newCarolBal.toNumber(), carolBal.minus(10), "Split not equal.");
+        assert.equal(bobWBal.toNumber(), 10, "Bob share incorrect.");
+        assert.equal(carolWBal.toNumber(), 10, "Carol share incorrect.");
+        assert.equal(aliceWBal.toNumber(), 1, "Alice share incorrect.");
+
+        // withdraw funds
+        var bobBal = await web3.eth.getBalance(bob);
+        var tx = await spl.withdraw({from: bob, gasPrice: web3.toWei(1, "gwei")});
+        assert.equal(tx.receipt.status, 1, "Bob Withdraw transaction failed.");
+        var txCost = web3.toWei(1, "gwei") * tx.receipt.gasUsed;
+        var bobNewBal = await web3.eth.getBalance(bob);
+        assert(bobNewBal.plus(txCost).minus(bobWBal).toNumber(), bobBal.toNumber(), "Bob after withdraw balance incorrect.");
+
+        var carolBal = await web3.eth.getBalance(carol);
+        var tx = await spl.withdraw({from: carol, gasPrice: web3.toWei(1, "gwei")});
+        assert.equal(tx.receipt.status, 1, "carol Withdraw transaction failed.");
+        var txCost = web3.toWei(1, "gwei") * tx.receipt.gasUsed;
+        var carolNewBal = await web3.eth.getBalance(carol);
+        assert(carolNewBal.plus(txCost).minus(carolWBal).toNumber(), carolBal.toNumber(), "Carol after withdraw balance incorrect.");
+
+        var aliceBal = await web3.eth.getBalance(alice);
+        var tx = await spl.withdraw({from: alice, gasPrice: web3.toWei(1, "gwei")});
+        assert.equal(tx.receipt.status, 1, "alice Withdraw transaction failed.");
+        var txCost = web3.toWei(1, "gwei") * tx.receipt.gasUsed;
+        var aliceNewBal = await web3.eth.getBalance(alice);
+        assert(aliceNewBal.plus(txCost).minus(aliceWBal).toNumber(), aliceBal.toNumber(), "alice after withdraw balance incorrect.");
+
+
     });
 
     it('should be killable only by owner', async () => {
