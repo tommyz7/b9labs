@@ -16,6 +16,31 @@ contract Remittance {
     mapping(bytes32 => Withdraw) public withdraws;
     uint256 public commission;
 
+    event NewCommision(uint256 indexed newCom, uint256 blockNumber);
+
+    event NewWithdraw(
+        address indexed creator,
+        address indexed beneficiary,
+        uint256 value,
+        uint256 indexed deadline
+    );
+
+    event CancelWithdraw(
+        address indexed creator,
+        address indexed beneficiary,
+        uint256 value,
+        uint256 indexed deadline
+    );
+
+    event WithdrawCompleted(
+        address indexed creator,
+        address indexed beneficiary,
+        uint256 value,
+        uint256 indexed deadline
+    );
+
+    event CommissionWithdrawn(address indexed beneficiary, uint256 indexed amount);
+
 
     function Remittance() public {
         owner = msg.sender;
@@ -28,6 +53,7 @@ contract Remittance {
 
     function setCommission(uint256 newCom) public onlyOwner returns(bool) {
         commission = newCom;
+        NewCommision(newCom, block.number);
         return true;
     }
 
@@ -42,6 +68,8 @@ contract Remittance {
         require(deadline > now && deadline <= now + (14*24*60*60));
 
         withdraws[passwordHash] = Withdraw(msg.value, deadline, beneficiary, msg.sender);
+
+        NewWithdraw(msg.sender, beneficiary, msg.value, deadline);
         return true;
     }
 
@@ -53,9 +81,17 @@ contract Remittance {
         // withdraw must be unused
         require(withdraws[passwordHash].value > 0);
 
+        Withdraw memory withdrawCopy = withdraws[passwordHash];
         uint256 value = withdraws[passwordHash].value;
         delete withdraws[passwordHash];
         msg.sender.transfer(value);
+        
+        CancelWithdraw(
+            withdrawCopy.creator,
+            withdrawCopy.beneficiary,
+            withdrawCopy.value,
+            withdrawCopy.deadline
+        );
         return true;
     }
 
@@ -65,10 +101,34 @@ contract Remittance {
         require(withdraws[hash].deadline >= now);
         require(withdraws[hash].beneficiary == msg.sender);
 
+        Withdraw memory withdrawCopy = withdraws[hash];
         uint256 value = getCut(withdraws[hash].value);
         delete withdraws[hash];
         msg.sender.transfer(value);
+
+        WithdrawCompleted(
+            withdrawCopy.creator,
+            withdrawCopy.beneficiary,
+            withdrawCopy.value,
+            withdrawCopy.deadline
+        );
         return true;
+    }
+
+    function withdrawCommission(address beneficiary) public onlyOwner returns(bool) {
+        if (beneficiary == address(0)) {
+            beneficiary = msg.sender;
+        }
+        uint256 tempCommission = commissionBalance;
+        commissionBalance = 0;
+        beneficiary.transfer(commissionBalance);
+
+        CommissionWithdrawn(beneficiary, tempCommission);
+        return true;
+    }
+
+    function kill(address beneficiary) public onlyOwner {
+        selfdestruct(beneficiary);
     }
 
     function getCut(uint256 value) internal returns(uint256) {
@@ -80,16 +140,4 @@ contract Remittance {
         return value - commission;
     }
 
-    function withdrawCommission(address beneficiary) public onlyOwner returns(bool) {
-        if (beneficiary == address(0)) {
-            beneficiary = msg.sender;
-        }
-        commissionBalance = 0;
-        beneficiary.transfer(commissionBalance);
-        return true;
-    }
-
-    function kill(address beneficiary) public onlyOwner {
-        selfdestruct(beneficiary);
-    }
 }
