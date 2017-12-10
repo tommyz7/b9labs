@@ -12,6 +12,11 @@ contract RockPaperScissors {
         paid
     }
 
+    struct Move {
+        uint8 move;
+        bool revealed;
+    }
+
     struct Game {
         address player1;
         address player2;
@@ -19,7 +24,7 @@ contract RockPaperScissors {
         State state;
         // uint256 deadline;
         mapping(address => bytes32) movesHash;
-        mapping(address => uint8) revealedMoves;
+        mapping(address => Move) revealedMoves;
     }
 
     mapping(bytes32 => Game) public games;
@@ -31,7 +36,6 @@ contract RockPaperScissors {
         // rock 0, paper 1, scissors 2
         // 0 - draw, 1 - player 1 wins, 2 - player 2 wins
         // 00 => draw
-        // could use for inside for but it looks ugly
         results[keccak256(uint8(0), uint8(0))] = 0;
         // 01 => p2
         results[keccak256(uint8(0), uint8(1))] = 2;
@@ -59,6 +63,17 @@ contract RockPaperScissors {
     modifier inState(bytes32 id, State state) {
         require(games[id].state == state);
         _;
+    }
+
+    function getMoveHash(bytes32 gameID, address player) external view returns (bytes32) {
+        require(player != address(0));
+        return games[gameID].movesHash[player];
+    }
+
+    function getRevealedMove(bytes32 gameID, address player) external view returns (uint8) {
+        require(player != address(0));
+        require(games[gameID].revealedMoves[player].revealed == true);
+        return games[gameID].revealedMoves[player].move;
     }
 
     /**
@@ -122,10 +137,12 @@ contract RockPaperScissors {
         bytes32 hash = keccak256(move, secretWord);
         assert(game.movesHash[msg.sender] == hash);
 
-        game.revealedMoves[msg.sender] = move;
+        game.revealedMoves[msg.sender].move = move;
+        game.revealedMoves[msg.sender].revealed = true;
 
         // update state
-        if(game.revealedMoves[game.player1] != 0 && game.revealedMoves[game.player2] != 0) {
+        if(game.revealedMoves[game.player1].revealed == true 
+            && game.revealedMoves[game.player2].revealed == true) {
             game.state = State.revealed;
         }
         return true;
@@ -152,8 +169,8 @@ contract RockPaperScissors {
 
     function getWinner(bytes32 id) internal view returns(address) {
         Game storage game = games[id];
-        uint8 p1Move = game.revealedMoves[game.player1];
-        uint8 p2Move = game.revealedMoves[game.player2];
+        uint8 p1Move = game.revealedMoves[game.player1].move;
+        uint8 p2Move = game.revealedMoves[game.player2].move;
 
         // check for illigal moves
         if(p1Move > 2 && p2Move <= 2) {
