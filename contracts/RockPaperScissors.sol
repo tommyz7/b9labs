@@ -31,7 +31,31 @@ contract RockPaperScissors {
     mapping(bytes32 => uint8) public results;
     mapping(address => uint256) public balances;
 
-    event NewGame(bytes32 id, address player1, address player2, uint256 stake);
+    event LogNewGame(
+        bytes32 indexed id,
+        address indexed player1,
+        address indexed player2,
+        uint256 stake
+    );
+
+    event LogJoinedGame(bytes32 indexed id, address indexed player2);
+    
+    event LogHashPosted(
+        bytes32 indexed id,
+        address indexed player,
+        bytes32 indexed movesHash
+    );
+
+    event LogMoveRevealed(
+        bytes32 indexed id,
+        address indexed player,
+        uint8 indexed move,
+        bytes32 secretWord
+    );
+
+    event LogGameWinner(bytes32 indexed id, address indexed winner);
+
+    event LogWithdraw(address indexed player, uint256 indexed value);
 
     function RockPaperScissors() public  {
         // rock 0, paper 1, scissors 2
@@ -93,7 +117,7 @@ contract RockPaperScissors {
             stake: msg.value,
             state: State.newGame
         });
-        NewGame(gameID, games[gameID].player1, games[gameID].player2, games[gameID].stake);
+        LogNewGame(gameID, games[gameID].player1, games[gameID].player2, games[gameID].stake);
         return true;
     }
 
@@ -106,6 +130,7 @@ contract RockPaperScissors {
         game.player2 = msg.sender;
         game.stake += msg.value;
         game.state = State.active;
+        LogJoinedGame(id, game.player2);
         return true;
     }
 
@@ -124,6 +149,7 @@ contract RockPaperScissors {
         if(game.movesHash[game.player1] != '' && game.movesHash[game.player2] != '') {
             game.state = State.movesPosted;
         }
+        LogHashPosted(id, msg.sender, moveHash);
         return true;
     }
 
@@ -141,12 +167,14 @@ contract RockPaperScissors {
 
         game.revealedMoves[msg.sender].move = move;
         game.revealedMoves[msg.sender].revealed = true;
+        LogMoveRevealed(id, msg.sender, move, secretWord);
 
         // update state
         if(game.revealedMoves[game.player1].revealed == true 
             && game.revealedMoves[game.player2].revealed == true) {
             game.state = State.revealed;
-            getWinner(id);
+            address winner = getWinner(id);
+            LogGameWinner(id, winner);
         }
         return true;
     }
@@ -157,10 +185,11 @@ contract RockPaperScissors {
         uint256 value = balances[msg.sender];
         balances[msg.sender] = 0;
         msg.sender.transfer(value);
+        LogWithdraw(msg.sender, value);
         return true;
     }
 
-    function getWinner(bytes32 id) internal returns(bool) {
+    function getWinner(bytes32 id) internal returns(address) {
         Game storage game = games[id];
         uint8 p1Move = game.revealedMoves[game.player1].move;
         uint8 p2Move = game.revealedMoves[game.player2].move;
@@ -168,22 +197,27 @@ contract RockPaperScissors {
         // check for illigal moves
         if(p1Move > 2 && p2Move <= 2) {
             balances[game.player2] += game.stake;
+            return game.player2;
         } else if (p1Move <= 2 && p2Move > 2) {
             balances[game.player1] += game.stake;
+            return game.player1;
         } else if (p1Move > 2 && p2Move > 2) {
             balances[game.player1] += game.stake / 2;
             balances[game.player2] += game.stake / 2;
+            return address(0);
         }
 
         if(results[keccak256(p1Move, p2Move)] == 0) {
             balances[game.player1] += game.stake / 2;
             balances[game.player2] += game.stake / 2;
+            return address(0);
         } else if (results[keccak256(p1Move, p2Move)] == 1) {
             balances[game.player1] += game.stake;
+            return game.player1;
         } else if (results[keccak256(p1Move, p2Move)] == 2) {
             balances[game.player2] += game.stake;
+            return game.player2;
         }
-        return true;
     }
 }
 

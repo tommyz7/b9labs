@@ -50,21 +50,25 @@ contract('Splitter', function(accounts) {
 
     });
 
-    it('should be killable only by owner', async () => {
-        var spl = await Splitter.new({from: accounts[0]});
+    it('should be pausible only by owner', async () => {
+        var bob = accounts[2];
+        var alice = accounts[3];
+        var carol = accounts[4];
+        
+        var isRunning = await spl.isRunning.call()
+        assert.equal(isRunning, true, "isRunning 1 incorrect.");
+        var tx = await spl.pause({from: accounts[0]});
+        var isRunning = await spl.isRunning.call()
+        assert.equal(isRunning, false, "isRunning 2 incorrect.");
         try {
-            await spl.kill(accounts[1], {from: accounts[1]});
+            tx = await spl.splitFunds(bob, carol, {from: alice, value: 21});
             assert(false, "Revert expected");
         } catch(e) {
-            var owner = await spl.owner({from: accounts[0]});
-            assert.equal(owner, accounts[0], "Contract killed.");
-
-            var tx = await spl.kill(accounts[0], {from: accounts[0]});
-            assert.equal(tx.receipt.status, 1, "Transaction failed.");
+            tx = await spl.resume({from: accounts[0]});
+            isRunning = await spl.isRunning.call()
+            assert.equal(isRunning, true, "isRunning 3 incorrect.");
+            tx = await spl.splitFunds(bob, carol, {from: alice, value: 21});
         }
-
-        var owner = await spl.owner({from: accounts[0]});
-        assert.equal(owner, '0x0', "Contract not killed.");
     });
     
 });

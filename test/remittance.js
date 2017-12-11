@@ -22,20 +22,22 @@ contract('Remittance', (accounts) => {
         assert.equal(owner, accounts[0], "Owner not set correctly.");
     });
 
-    it('should be killable only by owner', async () => {
+    it('should be pausible only by owner', async () => {
+        var isRunning = await rem.isRunning.call()
+        assert.equal(isRunning, true, "isRunning 1 incorrect.");
+        var tx = await rem.pause({from: accounts[0]});
+        isRunning = await rem.isRunning.call()
+        assert.equal(isRunning, false, "isRunning 2 incorrect.");
         try {
-            await rem.kill(accounts[1], {from: accounts[1]});
+            tx = await rem.setCommission(100000, {from: accounts[0]});
             assert(false, "Revert expected");
         } catch(e) {
-            var owner = await rem.owner.call({from: accounts[0]});
-            assert.equal(owner, accounts[0], "Contract killed.");
-
-            var tx = await rem.kill(accounts[0], {from: accounts[0]});
+            tx = await rem.resume({from: accounts[0]});
+            isRunning = await rem.isRunning.call()
+            assert.equal(isRunning, true, "isRunning 3 incorrect.");
+            tx = await rem.setCommission(100000, {from: accounts[0]});
             assert.equal(tx.receipt.status, 1, "Transaction failed.");
         }
-
-        var owner = await rem.owner({from: accounts[0]});
-        assert.equal(owner, '0x0', "Contract not killed.");
     });
 
     it('should add withdraw', async () => {
