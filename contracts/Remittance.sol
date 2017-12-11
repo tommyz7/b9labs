@@ -62,6 +62,7 @@ contract Remittance {
         payable
         returns(bool)
     {
+        require(withdraws[passwordHash].creator == address(0));
         require(beneficiary != address(0));
         require(msg.value > 0);
         // max deadline, 2 weeks

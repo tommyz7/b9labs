@@ -29,6 +29,7 @@ contract RockPaperScissors {
 
     mapping(bytes32 => Game) public games;
     mapping(bytes32 => uint8) public results;
+    mapping(address => uint256) public balances;
 
     event NewGame(bytes32 id, address player1, address player2, uint256 stake);
 
@@ -103,6 +104,7 @@ contract RockPaperScissors {
         require(game.player2 == msg.sender || games[id].player2 == address(0));
 
         game.player2 = msg.sender;
+        game.stake += msg.value;
         game.state = State.active;
         return true;
     }
@@ -144,50 +146,44 @@ contract RockPaperScissors {
         if(game.revealedMoves[game.player1].revealed == true 
             && game.revealedMoves[game.player2].revealed == true) {
             game.state = State.revealed;
+            getWinner(id);
         }
         return true;
     }
 
-    function sendReward(bytes32 id)
-        public
-        onlyPlayer(id)
-        inState(id, State.revealed)
-        returns(bool) 
-    {
-        Game storage game = games[id];
-        address winner = getWinner(id);
+    function withdrawReward() public returns(bool) {
+        require(balances[msg.sender] > 0);
 
-        if (winner == address(0)) {
-            game.player1.transfer(game.stake);
-            game.player2.transfer(game.stake);
-        } else {
-            winner.transfer(game.stake * 2);
-        }
-        game.state = State.paid;
+        uint256 value = balances[msg.sender];
+        balances[msg.sender] = 0;
+        msg.sender.transfer(value);
         return true;
     }
 
-    function getWinner(bytes32 id) internal view returns(address) {
+    function getWinner(bytes32 id) internal returns(bool) {
         Game storage game = games[id];
         uint8 p1Move = game.revealedMoves[game.player1].move;
         uint8 p2Move = game.revealedMoves[game.player2].move;
 
         // check for illigal moves
         if(p1Move > 2 && p2Move <= 2) {
-            return game.player2;
+            balances[game.player2] += game.stake;
         } else if (p1Move <= 2 && p2Move > 2) {
-            return game.player1;
+            balances[game.player1] += game.stake;
         } else if (p1Move > 2 && p2Move > 2) {
-            return address(0);
+            balances[game.player1] += game.stake / 2;
+            balances[game.player2] += game.stake / 2;
         }
 
         if(results[keccak256(p1Move, p2Move)] == 0) {
-            return address(0);
+            balances[game.player1] += game.stake / 2;
+            balances[game.player2] += game.stake / 2;
         } else if (results[keccak256(p1Move, p2Move)] == 1) {
-            return game.player1;
+            balances[game.player1] += game.stake;
         } else if (results[keccak256(p1Move, p2Move)] == 2) {
-            return game.player2;
+            balances[game.player2] += game.stake;
         }
+        return true;
     }
 }
 

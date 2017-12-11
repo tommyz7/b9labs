@@ -42,7 +42,7 @@ contract('Remittance', (accounts) => {
         var alice = accounts[1];
         var carol = accounts[2];
         var pass = 'pass';
-        var passHash = web3.sha3(pass);
+        var passHash = '0x' + abi.soliditySHA3(["bytes32"], [pass]).toString('hex');
         var deadline = Math.floor(Date.now() / 1000 + 120);
         var value = web3.toWei(1, "ether");
 

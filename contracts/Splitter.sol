@@ -34,7 +34,9 @@ contract Splitter {
 
     function withdraw() public returns(bool) {
         require(balances[msg.sender] > 0);
-        msg.sender.transfer(balances[msg.sender]);
+        uint256 value = balances[msg.sender];
+        balances[msg.sender] = 0;
+        msg.sender.transfer(value);
         return true;
     }
 

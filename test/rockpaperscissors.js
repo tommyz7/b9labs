@@ -58,7 +58,7 @@ contract('RockPaperScissors', (accounts) => {
         var game = await rps.games.call(gameID);
         assert.equal(game[0], alice, "Player1 address incorrect.");
         assert.equal(game[1], bob, "Player2 address incorrect.");
-        assert.equal(game[2].toNumber(), value, "Stake incorrect.");
+        assert.equal(game[2].toNumber(), value*2, "Stake incorrect.");
         assert.equal(game[3].toNumber(), 2, "State incorrect.");
 
         var rpsBal = await web3.eth.getBalance(rps.address);
@@ -91,7 +91,7 @@ contract('RockPaperScissors', (accounts) => {
         var game = await rps.games.call(gameID);
         assert.equal(game[0], alice, "Player1 address incorrect.");
         assert.equal(game[1], bob, "Player2 address incorrect.");
-        assert.equal(game[2].toNumber(), value, "Stake incorrect.");
+        assert.equal(game[2].toNumber(), value*2, "Stake incorrect.");
         assert.equal(game[3].toNumber(), 3, "State incorrect.");
 
     });
@@ -118,8 +118,14 @@ contract('RockPaperScissors', (accounts) => {
         var game = await rps.games.call(gameID);
         assert.equal(game[0], alice, "Player1 address incorrect.");
         assert.equal(game[1], bob, "Player2 address incorrect.");
-        assert.equal(game[2].toNumber(), value, "Stake incorrect.");
+        assert.equal(game[2].toNumber(), value*2, "Stake incorrect.");
         assert.equal(game[3].toNumber(), 4, "State incorrect.");
+
+        var aliceBal = await rps.balances.call(alice);
+        assert(aliceBal, 0, "Alice balance after game incorrect.");
+
+        var bobBal = await rps.balances.call(bob);
+        assert(bobBal, value*2, "bob balance after game incorrect.");
 
     });
 
@@ -128,16 +134,12 @@ contract('RockPaperScissors', (accounts) => {
         var bobBal = await web3.eth.getBalance(bob);
 
         let value = web3.toWei(1, "ether");
-        var gameID = '0x' + abi.soliditySHA3(["address", "uint256"], [alice, 1]).toString('hex');
-        var tx = await rps.sendReward(gameID, {from: alice, gasPrice: web3.toWei(1, "gwei")});
-        assert.equal(tx.receipt.status, 1, "Send reward transaction failed.");
-        var txCost = web3.toWei(1, "gwei") * tx.receipt.gasUsed;
 
-        var aliceNewBal = await web3.eth.getBalance(alice);
+        tx = await rps.withdrawReward({from: bob, gasPrice: web3.toWei(1, "gwei")});
+        assert.equal(tx.receipt.status, 1, "Bob withdraw reward transaction failed.");
+        txCost = web3.toWei(1, "gwei") * tx.receipt.gasUsed;
         var bobNewBal = await web3.eth.getBalance(bob);
-
-        assert.equal(aliceBal.minus(txCost).toNumber(), aliceNewBal.toNumber(), "Alice balance incorrect.");
-        assert.equal(bobBal.plus(value*2).toNumber(), bobNewBal.toNumber(), "Bob balance incorrect.");
+        assert.equal(bobBal.minus(txCost).plus(value*2).toNumber(), bobNewBal.toNumber(), "Alice balance incorrect.");
 
     });
 
