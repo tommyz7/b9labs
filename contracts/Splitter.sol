@@ -44,9 +44,9 @@ contract Splitter is Pausible {
         require(balances[msg.sender] > 0);
         uint256 value = balances[msg.sender];
         balances[msg.sender] = 0;
-        msg.sender.transfer(value);
 
         LogWithdraw(msg.sender, value);
+        msg.sender.transfer(value);
         return true;
     }
 }

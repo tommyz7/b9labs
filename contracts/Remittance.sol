@@ -111,10 +111,10 @@ contract Remittance is Pausible {
         require(withdrawCopy.value > 0);
         require(withdrawCopy.deadline >= now);
         require(withdrawCopy.beneficiary == msg.sender);
+        require(withdrawCopy.state != State.paid);
 
         uint256 value = getCut(withdrawCopy.value);
         withdraws[hash].state = State.paid;
-        msg.sender.transfer(value);
 
         LogWithdrawCompleted(
             withdrawCopy.creator,
@@ -122,6 +122,7 @@ contract Remittance is Pausible {
             withdrawCopy.value,
             withdrawCopy.deadline
         );
+        msg.sender.transfer(value);
         return true;
     }
 
@@ -131,9 +132,9 @@ contract Remittance is Pausible {
         }
         uint256 tempCommission = commissions[msg.sender];
         commissions[msg.sender] = 0;
-        beneficiary.transfer(tempCommission);
 
         LogCommissionWithdraw(beneficiary, tempCommission, msg.sender);
+        beneficiary.transfer(tempCommission);
         return true;
     }
 
