@@ -8,11 +8,24 @@ contract RockPaperScissors {
         newGame,
         active,
         movesPosted,
-        revealed,
-        paid
+        revealed
     }
 
-    struct Move {
+    enum Move {
+        None,
+        Rock,
+        Paper,
+        Scissors
+    }
+
+    enum Outcome {
+        None,
+        Draw,
+        Player1,
+        Player2
+    }
+
+    struct RevealedMove {
         uint8 move;
         bool revealed;
     }
@@ -22,160 +35,168 @@ contract RockPaperScissors {
         address player2;
         uint256 stake;
         State state;
-        // uint256 deadline;
+        uint256 deadline;
         mapping(address => bytes32) movesHash;
-        mapping(address => Move) revealedMoves;
+        mapping(address => RevealedMove) revealedMoves;
     }
 
     mapping(bytes32 => Game) public games;
-    mapping(bytes32 => uint8) public results;
+    mapping(uint8 => mapping(uint8 => uint8)) public results;
     mapping(address => uint256) public balances;
 
     event LogNewGame(
-        bytes32 indexed id,
+        bytes32 indexed gameId,
         address indexed player1,
         address indexed player2,
         uint256 stake
     );
 
-    event LogJoinedGame(bytes32 indexed id, address indexed player2);
+    event LogJoinedGame(bytes32 indexed gameId, address indexed player2);
     
     event LogHashPosted(
-        bytes32 indexed id,
+        bytes32 indexed gameId,
         address indexed player,
         bytes32 indexed movesHash
     );
 
     event LogMoveRevealed(
-        bytes32 indexed id,
+        bytes32 indexed gameId,
         address indexed player,
         uint8 indexed move,
         bytes32 secretWord
     );
 
-    event LogGameWinner(bytes32 indexed id, address indexed winner);
+    event LogGameWinner(bytes32 indexed gameId, address indexed winner);
 
     event LogWithdraw(address indexed player, uint256 indexed value);
 
     function RockPaperScissors() public  {
-        // rock 0, paper 1, scissors 2
-        // 0 - draw, 1 - player 1 wins, 2 - player 2 wins
-        // 00 => draw
-        results[keccak256(uint8(0), uint8(0))] = 0;
-        // 01 => p2
-        results[keccak256(uint8(0), uint8(1))] = 2;
-        // 02 => p1
-        results[keccak256(uint8(0), uint8(2))] = 1;
-        // 10 => p1
-        results[keccak256(uint8(1), uint8(0))] = 1;
-        // 11 => draw
-        results[keccak256(uint8(1), uint8(1))] = 0;
-        // 12 => p2
-        results[keccak256(uint8(1), uint8(2))] = 2;
-        // 20 => p2
-        results[keccak256(uint8(2), uint8(0))] = 2;
-        // 21 => p1
-        results[keccak256(uint8(2), uint8(1))] = 1;
-        // 22 => draw
-        results[keccak256(uint8(2), uint8(2))] = 0;
+        // set results
+        results[uint8(Move.Rock)][uint8(Move.Rock)] = uint8(Outcome.Draw);
+        results[uint8(Move.Rock)][uint8(Move.Paper)] = uint8(Outcome.Player2);
+        results[uint8(Move.Rock)][uint8(Move.Scissors)] = uint8(Outcome.Player1);
+        results[uint8(Move.Paper)][uint8(Move.Rock)] = uint8(Outcome.Player1);
+        results[uint8(Move.Paper)][uint8(Move.Paper)] = uint8(Outcome.Draw);
+        results[uint8(Move.Paper)][uint8(Move.Scissors)] = uint8(Outcome.Player2);
+        results[uint8(Move.Scissors)][uint8(Move.Rock)] = uint8(Outcome.Player2);
+        results[uint8(Move.Scissors)][uint8(Move.Paper)] = uint8(Outcome.Player1);
+        results[uint8(Move.Scissors)][uint8(Move.Scissors)] = uint8(Outcome.Draw);
     }
 
-    modifier onlyPlayer(bytes32 id) {
-        require(games[id].player1 == msg.sender || games[id].player2 == msg.sender);
+    modifier onlyPlayer(bytes32 gameId) {
+        require(games[gameId].player1 == msg.sender || games[gameId].player2 == msg.sender);
         _;
     }
 
-    modifier inState(bytes32 id, State state) {
-        require(games[id].state == state);
+    modifier inState(bytes32 gameId, State state) {
+        require(games[gameId].state == state);
         _;
     }
 
-    function getMoveHash(bytes32 gameID, address player) external view returns (bytes32) {
-        require(player != address(0));
-        return games[gameID].movesHash[player];
+    function getMoveHash(bytes32 gameId, address player) external view returns (bytes32) {
+        return games[gameId].movesHash[player];
     }
 
-    function getRevealedMove(bytes32 gameID, address player) external view returns (uint8) {
-        require(player != address(0));
-        require(games[gameID].revealedMoves[player].revealed == true);
-        return games[gameID].revealedMoves[player].move;
+    function getRevealedMove(bytes32 gameId, address player) external view returns (uint8) {
+        return games[gameId].revealedMoves[player].move;
+    }
+
+    function createGameId(address creator, uint256 gameNumber) external pure returns(bytes32) {
+        return keccak256(creator, gameNumber);
+    }
+
+    function createMoveHash(uint8 move, bytes32 secretWord) external pure returns(bytes32) {
+        return keccak256(move, secretWord);
     }
 
     /**
      * Create game. If coplayer's address is 0x0, it's an open table
      */
-    function newGame(bytes32 gameID, address coplayer)
+    function newGame(bytes32 gameId, address coplayer, bytes32 moveHash)
         public
         payable
-        inState(gameID, State.none)
+        inState(gameId, State.none)
         returns(bool)
     {
         require(coplayer != msg.sender);
-        games[gameID] = Game({
+        require(moveHash != bytes32(0));
+
+        games[gameId] = Game({
             player1: msg.sender,
             player2: coplayer,
             stake: msg.value,
-            state: State.newGame
+            state: State.newGame,
+            // need that for later
+            deadline: 0
         });
-        LogNewGame(gameID, games[gameID].player1, games[gameID].player2, games[gameID].stake);
+        games[gameId].movesHash[msg.sender] = moveHash;
+        Game memory gameCopy =  games[gameId];
+        LogNewGame(gameId, gameCopy.player1, gameCopy.player2, gameCopy.stake);
         return true;
     }
 
-    function joinGame(bytes32 id) public payable returns(bool) {
-        Game storage game = games[id];
-        require(game.stake == msg.value);
-        require(game.player1 != address(0));
-        require(game.player2 == msg.sender || games[id].player2 == address(0));
-
-        game.player2 = msg.sender;
-        game.stake += msg.value;
-        game.state = State.active;
-        LogJoinedGame(id, game.player2);
-        return true;
-    }
-
-    function postMoveHash(bytes32 id, bytes32 moveHash)
+    function joinGame(bytes32 gameId, uint8 move)
         public
-        onlyPlayer(id)
-        inState(id, State.active)
+        payable
+        inState(gameId, State.newGame)
         returns(bool)
     {
-        Game storage game = games[id];
-        require(game.movesHash[msg.sender] == '');
+        Game memory gameCopy = games[gameId];
+        require(gameCopy.stake == msg.value);
+        require(gameCopy.player1 != address(0));
+        require(gameCopy.player2 == msg.sender || games[gameId].player2 == address(0));
 
-        game.movesHash[msg.sender] = moveHash;
+        games[gameId].player2 = msg.sender;
+        games[gameId].stake += msg.value;
 
-        // update state
-        if(game.movesHash[game.player1] != '' && game.movesHash[game.player2] != '') {
-            game.state = State.movesPosted;
-        }
-        LogHashPosted(id, msg.sender, moveHash);
+        games[gameId].revealedMoves[msg.sender].move = move;
+        games[gameId].revealedMoves[msg.sender].revealed = true;
+        games[gameId].deadline = now + 1 hours;
+        games[gameId].state = State.movesPosted;
+
+        LogJoinedGame(gameId, games[gameId].player2);
+        LogMoveRevealed(gameId, msg.sender, move, '');
         return true;
     }
 
-    function revealMove(bytes32 id, uint8 move, bytes32 secretWord)
+    function revealMove(bytes32 gameId, uint8 move, bytes32 secretWord)
         public
-        onlyPlayer(id)
-        inState(id, State.movesPosted)
+        onlyPlayer(gameId)
+        inState(gameId, State.movesPosted)
         returns(bool)
     {
         // get reference
-        Game storage game = games[id];
+        Game storage game = games[gameId];
 
         bytes32 hash = keccak256(move, secretWord);
-        assert(game.movesHash[msg.sender] == hash);
+        require(game.movesHash[msg.sender] == hash);
 
         game.revealedMoves[msg.sender].move = move;
         game.revealedMoves[msg.sender].revealed = true;
-        LogMoveRevealed(id, msg.sender, move, secretWord);
+        LogMoveRevealed(gameId, msg.sender, move, secretWord);
 
-        // update state
-        if(game.revealedMoves[game.player1].revealed == true 
-            && game.revealedMoves[game.player2].revealed == true) {
-            game.state = State.revealed;
-            address winner = getWinner(id);
-            LogGameWinner(id, winner);
-        }
+        game.state = State.revealed;
+        address winner = calculateWinner(gameId);
+        
+        LogGameWinner(gameId, winner);
+
+        return true;
+    }
+
+    function getRewardPastDeadline(bytes32 gameId)
+        public
+        onlyPlayer(gameId)
+        inState(gameId, State.movesPosted)
+        returns(bool)
+    {
+        Game storage game = games[gameId];
+        require(game.revealedMoves[msg.sender].revealed);
+        require(game.revealedMoves[game.player1].revealed == false
+            || game.revealedMoves[game.player2].revealed == false
+        );
+        require(game.deadline < now);
+        balances[msg.sender] += game.stake;
+        game.state = State.revealed;
         return true;
     }
 
@@ -189,34 +210,34 @@ contract RockPaperScissors {
         return true;
     }
 
-    function getWinner(bytes32 id) internal returns(address) {
-        Game storage game = games[id];
+    function calculateWinner(bytes32 gameId) internal returns(address) {
+        Game storage game = games[gameId];
         uint8 p1Move = game.revealedMoves[game.player1].move;
         uint8 p2Move = game.revealedMoves[game.player2].move;
 
-        // check for illigal moves
-        if(p1Move > 2 && p2Move <= 2) {
-            balances[game.player2] += game.stake;
-            return game.player2;
-        } else if (p1Move <= 2 && p2Move > 2) {
-            balances[game.player1] += game.stake;
-            return game.player1;
-        } else if (p1Move > 2 && p2Move > 2) {
+        if(results[p1Move][p2Move] == uint8(Outcome.Draw)) {
             balances[game.player1] += game.stake / 2;
             balances[game.player2] += game.stake / 2;
             return address(0);
-        }
-
-        if(results[keccak256(p1Move, p2Move)] == 0) {
-            balances[game.player1] += game.stake / 2;
-            balances[game.player2] += game.stake / 2;
-            return address(0);
-        } else if (results[keccak256(p1Move, p2Move)] == 1) {
+        } else if (results[p1Move][p2Move] == uint8(Outcome.Player1)) {
             balances[game.player1] += game.stake;
             return game.player1;
-        } else if (results[keccak256(p1Move, p2Move)] == 2) {
+        } else if (results[p1Move][p2Move] == uint8(Outcome.Player2)) {
             balances[game.player2] += game.stake;
             return game.player2;
+        } else if(results[p1Move][p2Move] == uint8(Outcome.None)) {
+            // one of the players or both made illegal moves
+            if (results[p1Move][uint8(Move.Scissors)] != uint8(Outcome.None)) {
+                balances[game.player1] += game.stake;
+                return game.player1;
+            } else if(results[uint8(Move.Scissors)][p2Move] != uint8(Outcome.None)) {
+                balances[game.player2] += game.stake;
+                return game.player2;
+            } else {
+                balances[game.player1] += game.stake / 2;
+                balances[game.player2] += game.stake / 2;
+                return address(0);
+            }
         }
     }
 }
