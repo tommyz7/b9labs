@@ -7,8 +7,8 @@ import './Ownable.sol';
 contract Pausible is Ownable {
     bool public isRunning = true;
 
-    event LogPause();
-    event LogResume();
+    event LogPause(address indexed sender);
+    event LogResume(address indexed sender);
 
 
     modifier onlyIfRunning {
@@ -19,13 +19,13 @@ contract Pausible is Ownable {
     function pause() public onlyOwner returns(bool) {
         require(isRunning == true);
         isRunning = false;
-        LogPause();
+        LogPause(msg.sender);
     }
 
     function resume() public onlyOwner returns(bool) {
         require(isRunning == false);
         isRunning = true;
-        LogResume();
+        LogResume(msg.sender);
         return true;
     }
 }
