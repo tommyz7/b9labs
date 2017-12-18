@@ -20,6 +20,6 @@
   },
   "homepage": "https://github.com/tommyz7/b9labs#readme",
   "dependencies": {
-    "ethereumjs-abi": "^0.6.5"
+    "bluebird": "^3.5.1"
   }
 }
