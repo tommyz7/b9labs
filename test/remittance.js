@@ -1,24 +1,28 @@
-var abi = require('ethereumjs-abi');
-var Remittance = artifacts.require('./Remittance.sol');
+const Remittance = artifacts.require('./Remittance.sol');
+const isTxSuccessful = require('../utils/isTxSuccessful');
+const Promise = require('bluebird');
 
+if (typeof web3.eth.getBlockPromise !== "function") {
+    Promise.promisifyAll(web3.eth, { suffix: "Promise" });
+}
 
 contract('Remittance', (accounts) => {
-    var rem;
+    let rem;
 
-    beforeEach(async () => {
-        rem = await Remittance.new({from: accounts[0]});
+    beforeEach("deploy new Remittance", async () => {
+        rem = await Remittance.new(1425854, {from: accounts[0]});
     });
 
     it('should set commission', async () => {
-        var tx = await rem.setCommission(100000, {from: accounts[0]});
-        assert.equal(tx.receipt.status, 1, "Transaction failed.");
+        var tx = await rem.setCommission(100000, {from: accounts[0], gas: 200000});
+        assert(isTxSuccessful(tx, 200000), "Transaction failed.");
 
         var commission = await rem.commission.call();
         assert.equal(commission, 100000, "Commission not set.");
     });
 
     it('should have owner', async () => {
-        var owner = await rem.owner.call({from: accounts[0]});
+        var owner = await rem.getOwner.call({from: accounts[0]});
         assert.equal(owner, accounts[0], "Owner not set correctly.");
     });
 
@@ -35,8 +39,8 @@ contract('Remittance', (accounts) => {
             tx = await rem.resume({from: accounts[0]});
             isRunning = await rem.isRunning.call()
             assert.equal(isRunning, true, "isRunning 3 incorrect.");
-            tx = await rem.setCommission(100000, {from: accounts[0]});
-            assert.equal(tx.receipt.status, 1, "Transaction failed.");
+            tx = await rem.setCommission(100000, {from: accounts[0], gas: 200000});
+            assert(isTxSuccessful(tx, 200000), "Transaction failed.");
         }
     });
 
@@ -44,12 +48,12 @@ contract('Remittance', (accounts) => {
         var alice = accounts[1];
         var carol = accounts[2];
         var pass = 'pass';
-        var passHash = '0x' + abi.soliditySHA3(["bytes32"], [pass]).toString('hex');
+        var passHash = await rem.createHash.call(pass);
         var deadline = Math.floor(Date.now() / 1000 + 120);
         var value = web3.toWei(1, "ether");
 
-        var tx = await rem.addWithdraw(passHash, deadline, carol, {from: alice, value: value});
-        assert.equal(tx.receipt.status, 1, "Transaction failed.");
+        var tx = await rem.addWithdraw(passHash, deadline, carol, {from: alice, value: value, gas: 200000});
+        assert(isTxSuccessful(tx, 200000), "Transaction failed.");
 
         var w = await rem.withdraws.call(passHash);
         assert.equal(w[0].toNumber(), value, "Value is set incorrectly.");
@@ -60,8 +64,8 @@ contract('Remittance', (accounts) => {
 
     it('should allow beneficiary to withdraw ether', async () => {
         // set commission
-        var tx = await rem.setCommission(100000, {from: accounts[0]});
-        assert.equal(tx.receipt.status, 1, "Transaction failed.");
+        var tx = await rem.setCommission(100000, {from: accounts[0], gas: 200000});
+        assert(isTxSuccessful(tx, 200000), "Transaction failed.");
 
         var commission = await rem.commission.call();
         assert.equal(commission, 100000, "Commission not set.");
@@ -70,12 +74,12 @@ contract('Remittance', (accounts) => {
         var alice = accounts[1];
         var carol = accounts[2];
         var pass = 'pass';
-        var passHash = '0x' + abi.soliditySHA3(["bytes32"], [pass]).toString('hex');
+        var passHash = await rem.createHash.call(pass);
         var deadline = Math.floor(Date.now() / 1000 + 120);
         var value = web3.toWei(1, "ether");
 
-        var tx = await rem.addWithdraw(passHash, deadline, carol, {from: alice, value: value});
-        assert.equal(tx.receipt.status, 1, "addWithdraw transaction failed.");
+        var tx = await rem.addWithdraw(passHash, deadline, carol, {from: alice, value: value, gas: 200000});
+        assert(isTxSuccessful(tx, 200000), "addWithdraw transaction failed.");
 
         var w = await rem.withdraws.call(passHash);
         assert.equal(w[0].toNumber(), value, "Value is set incorrectly.");
@@ -83,14 +87,14 @@ contract('Remittance', (accounts) => {
         assert.equal(w[2], carol, "Beneficiary is set incorrectly.");
         assert.equal(w[3], alice, "Creator is set incorrectly.");
         
-        var carolBal = await web3.eth.getBalance(carol);
+        var carolBal = await web3.eth.getBalancePromise(carol);
         
         // withdraw
-        var tx = await rem.withdraw(pass, {from: carol, gasPrice: web3.toWei(1, "gwei")});
-        assert.equal(tx.receipt.status, 1, "withdraw transaction failed.");
+        var tx = await rem.withdraw(pass, {from: carol, gasPrice: web3.toWei(1, "gwei"), gas: 200000});
+        assert(isTxSuccessful(tx, 200000), "withdraw transaction failed.");
         
         var txCost = tx.receipt.gasUsed * web3.toWei(1, "gwei");
-        var carolNewBal = await web3.eth.getBalance(carol);
+        var carolNewBal = await web3.eth.getBalancePromise(carol);
         
         assert.equal(
             carolNewBal.toNumber(),
@@ -105,13 +109,14 @@ contract('Remittance', (accounts) => {
     //     var alice = accounts[1];
     //     var carol = accounts[2];
     //     var pass = 'pass';
+        // var passHash = await rem.createHash.call(pass);
     //     var passHash = '0x' + abi.soliditySHA3(["bytes32"], [pass]).toString('hex');
     //     var deadline = Math.floor(Date.now() / 1000 + 100);
     //     var value = web3.toWei(1, "ether");
 
-    //     var aliceBal = await web3.eth.getBalance(alice);
-    //     var tx = await rem.addWithdraw(passHash, deadline, carol, {from: alice, value: value, gasPrice: web3.toWei(1, "gwei")});
-    //     assert.equal(tx.receipt.status, 1, "addWithdraw transaction failed.");
+    //     var aliceBal = await web3.eth.getBalancePromise(alice);
+    //     var tx = await rem.addWithdraw(passHash, deadline, carol, {from: alice, value: value, gasPrice: web3.toWei(1, "gwei"), gas: 200000});
+    //.equal(isTxSuccessful(tx, 200000), "addWithdraw transaction failed.");
     //     var gasUsed = tx.receipt.gasUsed;
 
     //     var w = await rem.withdraws.call(passHash);
@@ -130,7 +135,7 @@ contract('Remittance', (accounts) => {
     //     tx = await rem.cancelWithdraw(passHash, {from: alice, gasPrice: web3.toWei(1, "gwei")});
     //     gasUsed += tx.receipt.gasUsed;
     //     var txPrice = gasUsed * web3.toWei(1, "gwei");
-    //     var aliceNewBal = await web3.eth.getBalance(alice);
+    //     var aliceNewBal = await web3.eth.getBalancePromise(alice);
 
     //     assert.equal(
     //         aliceNewBal.toNumber(),

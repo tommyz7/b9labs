@@ -6,32 +6,34 @@ import './Pausible.sol';
 
 contract Remittance is Pausible {
 
+    enum State {created, canceled, paid}
+
     struct Withdraw {
         uint256 value;
         uint256 deadline;
         address beneficiary;
         address creator;
+        State state;
     }
 
-    uint256 public commissionBalance;
+    mapping(address => uint256) public commissions;
 
     mapping(bytes32 => Withdraw) public withdraws;
+
     uint256 public commission;
 
-    event LogNewCommision(uint256 indexed newCom, uint256 blockNumber);
+    event LogNewCommision(address indexed sender, uint256 newCom);
 
     event LogNewWithdraw(
         address indexed creator,
+        bytes32 passwordHash,
         address indexed beneficiary,
         uint256 value,
         uint256 indexed deadline
     );
 
     event LogCancelWithdraw(
-        address indexed creator,
-        address indexed beneficiary,
-        uint256 value,
-        uint256 indexed deadline
+        bytes32 indexed passwordHash
     );
 
     event LogWithdrawCompleted(
@@ -41,12 +43,23 @@ contract Remittance is Pausible {
         uint256 indexed deadline
     );
 
-    event CommissionWithdrawn(address indexed beneficiary, uint256 indexed amount);
+    event LogCommissionWithdraw(
+        address indexed beneficiary,
+        uint256 indexed amount,
+        address indexed sender
+    );
 
+    function Remittance(uint256 _commission) public {
+        commission = _commission;
+    }
+
+    function createHash(bytes32 password) external pure returns(bytes32) {
+        return keccak256(password);
+    }
 
     function setCommission(uint256 newCom) public onlyOwner returns(bool) {
         commission = newCom;
-        LogNewCommision(newCom, block.number);
+        LogNewCommision(msg.sender, newCom);
         return true;
     }
 
@@ -60,45 +73,47 @@ contract Remittance is Pausible {
         require(beneficiary != address(0));
         require(msg.value > 0);
         // max deadline, 2 weeks
-        require(deadline > now && deadline <= now + (14*24*60*60));
+        require(now < deadline && deadline <= now + 2 weeks);
 
-        withdraws[passwordHash] = Withdraw(msg.value, deadline, beneficiary, msg.sender);
+        withdraws[passwordHash] = Withdraw({
+            value: msg.value,
+            deadline: deadline,
+            beneficiary: beneficiary,
+            creator: msg.sender,
+            state: State.created
+        });
 
-        LogNewWithdraw(msg.sender, beneficiary, msg.value, deadline);
+        LogNewWithdraw(msg.sender, passwordHash, beneficiary, msg.value, deadline);
         return true;
     }
 
     function cancelWithdraw(bytes32 passwordHash) public onlyIfRunning returns(bool) {
-        // you must be a creator
-        require(withdraws[passwordHash].creator == msg.sender);
-        // it must be past deadline
-        require(withdraws[passwordHash].deadline < now);
-        // withdraw must be unused
-        require(withdraws[passwordHash].value > 0);
-
         Withdraw memory withdrawCopy = withdraws[passwordHash];
-        uint256 value = withdraws[passwordHash].value;
-        delete withdraws[passwordHash];
-        msg.sender.transfer(value);
+        // you must be a creator | not any more
+        // require(withdrawCopy.creator == msg.sender);
+        // it must be past deadline
+        require(withdrawCopy.deadline < now);
+        // withdraw must be unused
+        require(withdrawCopy.value > 0);
+        // must be in state Created
+        require(withdrawCopy.state == State.created);
+
+        withdraws[passwordHash].state = State.canceled;
+        withdrawCopy.creator.transfer(withdrawCopy.value);
         
-        LogCancelWithdraw(
-            withdrawCopy.creator,
-            withdrawCopy.beneficiary,
-            withdrawCopy.value,
-            withdrawCopy.deadline
-        );
+        LogCancelWithdraw(passwordHash);
         return true;
     }
 
     function withdraw(bytes32 password) public onlyIfRunning returns(bool) {
         bytes32 hash = keccak256(password);
-        require(withdraws[hash].value > 0);
-        require(withdraws[hash].deadline >= now);
-        require(withdraws[hash].beneficiary == msg.sender);
-
         Withdraw memory withdrawCopy = withdraws[hash];
-        uint256 value = getCut(withdraws[hash].value);
-        delete withdraws[hash];
+        require(withdrawCopy.value > 0);
+        require(withdrawCopy.deadline >= now);
+        require(withdrawCopy.beneficiary == msg.sender);
+
+        uint256 value = getCut(withdrawCopy.value);
+        withdraws[hash].state = State.paid;
         msg.sender.transfer(value);
 
         LogWithdrawCompleted(
@@ -110,15 +125,15 @@ contract Remittance is Pausible {
         return true;
     }
 
-    function withdrawCommission(address beneficiary) public onlyOwner returns(bool) {
+    function withdrawCommission(address beneficiary) public returns(bool) {
         if (beneficiary == address(0)) {
             beneficiary = msg.sender;
         }
-        uint256 tempCommission = commissionBalance;
-        commissionBalance = 0;
-        beneficiary.transfer(commissionBalance);
+        uint256 tempCommission = commissions[msg.sender];
+        commissions[msg.sender] = 0;
+        beneficiary.transfer(tempCommission);
 
-        CommissionWithdrawn(beneficiary, tempCommission);
+        LogCommissionWithdraw(beneficiary, tempCommission, msg.sender);
         return true;
     }
 
@@ -127,7 +142,7 @@ contract Remittance is Pausible {
             // take nothing
             return value;
         }
-        commissionBalance += commission;
+        commissions[getOwner()] += commission;
         return value - commission;
     }
 
