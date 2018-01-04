@@ -41,11 +41,10 @@ contract('Splitter', function(accounts) {
         assert(isTxSuccessful(tx, 200000), "Bob Withdraw transaction failed.");
         var gasUsed = tx.receipt.gasUsed;
         tx = web3.eth.getTransaction(tx.tx);
-        var gasPrice = tx.gasPrice.toNumber();
+        var txCost = tx.gasPrice.times(gasUsed).toNumber();
 
-        var txCost = gasPrice * gasUsed;
         var bobNewBal = await web3.eth.getBalancePromise(bob);
-        assert(bobNewBal.plus(txCost).minus(bobWBal).toNumber(), bobBal.toNumber(), "Bob after withdraw balance incorrect.");
+        assert(bobNewBal.plus(txCost).minus(bobWBal).toString(10), bobBal.toString(10), "Bob after withdraw balance incorrect.");
 
         // withdraw carol
         var carolBal = await web3.eth.getBalancePromise(carol);
@@ -71,6 +70,16 @@ contract('Splitter', function(accounts) {
         var aliceNewBal = await web3.eth.getBalancePromise(alice);
         assert(aliceNewBal.plus(txCost).minus(aliceWBal).toNumber(), aliceBal.toNumber(), "alice after withdraw balance incorrect.");
     });
+
+    it('should not allow to withdraw funds from 0 balance', async () => {
+        try {
+            var tx = await spl.withdraw({from: alice, gas: 2000000});
+        } catch (error) {
+            return;
+        }
+        assert.fail('Expected throw not received');
+    });
+
 
     it('should be pausible only by owner', async () => {
         var bob = accounts[2];

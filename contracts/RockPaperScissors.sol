@@ -1,7 +1,10 @@
 pragma solidity ^0.4.18;
 
+import './Ownable.sol';
 
-contract RockPaperScissors {
+contract RockPaperScissors is Ownable {
+
+    uint256 constant moveDeadline = 1 hours;
 
     enum State {
         none,
@@ -105,7 +108,7 @@ contract RockPaperScissors {
         return keccak256(creator, gameNumber);
     }
 
-    function createMoveHash(uint8 move, bytes32 secretWord) external pure returns(bytes32) {
+    function createMoveHash(uint8 move, bytes32 secretWord) public pure returns(bytes32) {
         return keccak256(move, secretWord);
     }
 
@@ -130,8 +133,7 @@ contract RockPaperScissors {
             deadline: 0
         });
         games[gameId].movesHash[msg.sender] = moveHash;
-        Game memory gameCopy =  games[gameId];
-        LogNewGame(gameId, gameCopy.player1, gameCopy.player2, gameCopy.stake);
+        LogNewGame(gameId, msg.sender, coplayer, msg.value);
         return true;
     }
 
@@ -141,20 +143,22 @@ contract RockPaperScissors {
         inState(gameId, State.newGame)
         returns(bool)
     {
-        Game memory gameCopy = games[gameId];
-        require(gameCopy.stake == msg.value);
-        require(gameCopy.player1 != address(0));
-        require(gameCopy.player2 == msg.sender || games[gameId].player2 == address(0));
+        require(games[gameId].stake == msg.value);
+        address player1 = games[gameId].player1;
+        require(player1 != address(0));
+        require(player1 != msg.sender);
+        address player2 = games[gameId].player2;
+        require(player2 == msg.sender || player2 == address(0));
 
         games[gameId].player2 = msg.sender;
         games[gameId].stake += msg.value;
 
         games[gameId].revealedMoves[msg.sender].move = move;
         games[gameId].revealedMoves[msg.sender].revealed = true;
-        games[gameId].deadline = now + 1 hours;
+        games[gameId].deadline = now + moveDeadline;
         games[gameId].state = State.movesPosted;
 
-        LogJoinedGame(gameId, games[gameId].player2);
+        LogJoinedGame(gameId, msg.sender);
         LogMoveRevealed(gameId, msg.sender, move, '');
         return true;
     }
@@ -168,7 +172,7 @@ contract RockPaperScissors {
         // get reference
         Game storage game = games[gameId];
 
-        bytes32 hash = keccak256(move, secretWord);
+        bytes32 hash = createMoveHash(move, secretWord);
         require(game.movesHash[msg.sender] == hash);
 
         game.revealedMoves[msg.sender].move = move;
@@ -176,10 +180,26 @@ contract RockPaperScissors {
         LogMoveRevealed(gameId, msg.sender, move, secretWord);
 
         game.state = State.revealed;
-        address winner = calculateWinner(gameId);
+        address winner = calculateWinner(game);
         
         LogGameWinner(gameId, winner);
 
+        return true;
+    }
+
+    /**
+     * In canse nobody joins your game, get your funds back
+     */
+    function cancelGame(bytes32 gameId)
+        public
+        onlyPlayer(gameId)
+        inState(gameId, State.newGame)
+        returns(bool)
+    {
+        Game storage game = games[gameId];
+        require(game.player1 == msg.sender);
+        balances[msg.sender] += game.stake;
+        game.state = State.revealed;
         return true;
     }
 
@@ -191,9 +211,7 @@ contract RockPaperScissors {
     {
         Game storage game = games[gameId];
         require(game.revealedMoves[msg.sender].revealed);
-        require(game.revealedMoves[game.player1].revealed == false
-            || game.revealedMoves[game.player2].revealed == false
-        );
+        require(game.revealedMoves[game.player1].revealed == false);
         require(game.deadline < now);
         balances[msg.sender] += game.stake;
         game.state = State.revealed;
@@ -210,32 +228,38 @@ contract RockPaperScissors {
         return true;
     }
 
-    function calculateWinner(bytes32 gameId) internal returns(address) {
-        Game storage game = games[gameId];
+    function calculateWinner(Game storage game) internal returns(address) {
         uint8 p1Move = game.revealedMoves[game.player1].move;
         uint8 p2Move = game.revealedMoves[game.player2].move;
 
-        if(results[p1Move][p2Move] == uint8(Outcome.Draw)) {
-            balances[game.player1] += game.stake / 2;
-            balances[game.player2] += game.stake / 2;
+        uint8 result = results[p1Move][p2Move];
+        address p1 = game.player1;
+        address p2 = game.player2;
+        uint256 stake = game.stake;
+
+        if(result == uint8(Outcome.Draw)) {
+            balances[p1] += stake / 2;
+            balances[p2] += stake / 2;
             return address(0);
-        } else if (results[p1Move][p2Move] == uint8(Outcome.Player1)) {
-            balances[game.player1] += game.stake;
-            return game.player1;
-        } else if (results[p1Move][p2Move] == uint8(Outcome.Player2)) {
-            balances[game.player2] += game.stake;
-            return game.player2;
-        } else if(results[p1Move][p2Move] == uint8(Outcome.None)) {
+        } else if (result == uint8(Outcome.Player1)) {
+            balances[p1] += stake;
+            return p1;
+        } else if (result == uint8(Outcome.Player2)) {
+            balances[p2] += stake;
+            return p2;
+        } else if(result == uint8(Outcome.None)) {
             // one of the players or both made illegal moves
             if (results[p1Move][uint8(Move.Scissors)] != uint8(Outcome.None)) {
-                balances[game.player1] += game.stake;
-                return game.player1;
+                balances[p1] += stake / 2;
+                balances[getOwner()] += stake / 2;
+                return p1;
             } else if(results[uint8(Move.Scissors)][p2Move] != uint8(Outcome.None)) {
-                balances[game.player2] += game.stake;
-                return game.player2;
+                balances[p2] += stake / 2;
+                balances[getOwner()] += stake / 2;
+                return p2;
             } else {
-                balances[game.player1] += game.stake / 2;
-                balances[game.player2] += game.stake / 2;
+                // both player sent illegal moves, give stake to owner
+                balances[getOwner()] += stake;
                 return address(0);
             }
         }
