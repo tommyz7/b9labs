@@ -130,7 +130,7 @@ contract RockPaperScissors is Ownable {
             stake: msg.value,
             state: State.newGame,
             // need that for later
-            deadline: 0
+            deadline: now + moveDeadline
         });
         games[gameId].movesHash[msg.sender] = moveHash;
         LogNewGame(gameId, msg.sender, coplayer, msg.value);
@@ -144,6 +144,7 @@ contract RockPaperScissors is Ownable {
         returns(bool)
     {
         require(games[gameId].stake == msg.value);
+        require(games[gameId].deadline >= now);
         address player1 = games[gameId].player1;
         require(player1 != address(0));
         require(player1 != msg.sender);
@@ -196,10 +197,11 @@ contract RockPaperScissors is Ownable {
         inState(gameId, State.newGame)
         returns(bool)
     {
-        Game storage game = games[gameId];
-        require(game.player1 == msg.sender);
-        balances[msg.sender] += game.stake;
-        game.state = State.revealed;
+        Game storage gameRef = games[gameId];
+        require(gameRef.deadline < now);
+        require(gameRef.player1 == msg.sender);
+        balances[msg.sender] += gameRef.stake;
+        gameRef.state = State.revealed;
         return true;
     }
 
