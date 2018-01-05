@@ -108,13 +108,15 @@ contract Remittance is Pausible {
 
     function withdraw(bytes32 password) public onlyIfRunning returns(bool) {
         bytes32 hash = keccak256(password);
-        Withdraw storage withdrawCopy = withdraws[hash];
-        require(withdrawCopy.value > 0);
-        require(withdrawCopy.deadline >= now);
-        require(withdrawCopy.beneficiary == msg.sender);
-        require(withdrawCopy.state == State.created);
+        Withdraw storage withdraw = withdraws[hash];
+        uint256 value = withdraw.value;
+        require(value > 0);
+        uint256 deadline = withdraw.deadline;
+        require(deadline >= now);
+        uint256 beneficiary = withdraw.beneficiary;
+        require(beneficiary == msg.sender);
+        require(withdraw.state == State.created);
 
-        uint256 value = withdrawCopy.value;
         if(value > commission) {
             commissions[getOwner()] += commission;
             value -= commission;
@@ -123,10 +125,10 @@ contract Remittance is Pausible {
         withdraws[hash].state = State.paid;
 
         LogWithdrawCompleted(
-            withdrawCopy.creator,
-            withdrawCopy.beneficiary,
-            withdrawCopy.value,
-            withdrawCopy.deadline
+            withdraw.creator,
+            beneficiary,
+            value,
+            deadline
         );
         msg.sender.transfer(value);
         return true;
