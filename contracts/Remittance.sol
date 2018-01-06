@@ -108,24 +108,24 @@ contract Remittance is Pausible {
 
     function withdraw(bytes32 password) public onlyIfRunning returns(bool) {
         bytes32 hash = keccak256(password);
-        Withdraw storage withdraw = withdraws[hash];
-        uint256 value = withdraw.value;
+        Withdraw storage withdrawRef = withdraws[hash];
+        uint256 value = withdrawRef.value;
         require(value > 0);
-        uint256 deadline = withdraw.deadline;
+        uint256 deadline = withdrawRef.deadline;
         require(deadline >= now);
-        uint256 beneficiary = withdraw.beneficiary;
+        address beneficiary = withdrawRef.beneficiary;
         require(beneficiary == msg.sender);
-        require(withdraw.state == State.created);
+        require(withdrawRef.state == State.created);
 
         if(value > commission) {
             commissions[getOwner()] += commission;
             value -= commission;
         }
         
-        withdraws[hash].state = State.paid;
+        withdrawRef.state = State.paid;
 
         LogWithdrawCompleted(
-            withdraw.creator,
+            withdrawRef.creator,
             beneficiary,
             value,
             deadline
